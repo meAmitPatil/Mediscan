@@ -1,0 +1,38 @@
+# Ignore Python cache files and directories
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore virtual environment directory
+venv/
+
+# Ignore environment variable files
+.env
+
+# Ignore image and other media files (optional)
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.mp4
+*.mp3
+
+# Ignore Streamlit file caches (if any are generated)
+.streamlit/
+
+# Ignore log files
+*.log
+
+# Ignore macOS system files
+.DS_Store
+
+# Ignore Jupyter notebook checkpoints (if you ever use Jupyter in the same project)
+.ipynb_checkpoints/
+
+# Ignore Python dependency management files
+Pipfile
+Pipfile.lock
+poetry.lock
+
+# Ignore node_modules if you use any frontend with Node.js
+node_modules/

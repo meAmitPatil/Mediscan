@@ -1,0 +1,9 @@
+streamlit
+pytesseract
+Pillow
+pymupdf
+qdrant-client
+sentence-transformers
+openai
+llama-index
+tika
