@@ -1,23 +1,19 @@
 import os
 import openai
-import weaviate
+from qdrant_client import QdrantClient
+from qdrant_client.http import models as qmodels
 from llama_index.core import Document
 from llama_index.core.indices.vector_store.base import VectorStoreIndex
 from dotenv import load_dotenv
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from weaviate.classes.init import Auth
 import logging
 
 load_dotenv()
 
 llama_index = None  # Placeholder for LlamaIndex instance
 
-# Initialize the Weaviate client
-weaviate_client = weaviate.connect_to_weaviate_cloud(
-    cluster_url=os.getenv("WEAVIATE_CLUSTER_URL"),
-    auth_credentials=Auth.api_key(os.getenv("WEAVIATE_API_KEY")),
-    skip_init_checks=True  # Optional: add this if you experience timeout issues
-)
+# Initialize Qdrant client
+qdrant_client = QdrantClient(host="localhost", port=6333)
 
 # Initialize LlamaIndex with the uploaded document
 def initialize_llama_index(documents):
@@ -34,31 +30,38 @@ def query_llama_index(query_text):
         return response.response
     return "No index available."
 
-def query_weaviate(query_text):
-    """Query Weaviate using the updated client API."""
+def query_qdrant(query_text):
+    """Query Qdrant for relevant documents."""
     try:
-        collection = weaviate_client.collections.get("MedicalDocument")
+        # Generate embeddings for the query
+        embedding = generate_embeddings(query_text)
         
-        # Execute the query
-        response = (
-            collection.query
-            .near_text(
-                query=query_text,
-                limit=1
-            )
-            .with_additional(["distance"])
-            .with_fields(["text"])
-            .do()
+        # Perform search in Qdrant collection
+        response = qdrant_client.search(
+            collection_name="medical_documents",
+            query_vector=embedding,
+            limit=1,
+            with_payload=True,
+            with_vectors=False
         )
 
         # Check if we got any results
-        if response and response.objects:
-            return [{"document_text": obj.properties["text"]} for obj in response.objects]
+        if response:
+            return [{"document_text": hit.payload["text"]} for hit in response]
         return []
 
     except Exception as e:
-        print(f"Error querying Weaviate: {e}")
+        print(f"Error querying Qdrant: {e}")
         return []
+
+def generate_embeddings(text):
+    """Generate embeddings using OpenAI embeddings API."""
+    client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    response = client.embeddings.create(
+        input=[text],
+        model="text-embedding-ada-002"  # Using the 1536-dimensional model
+    )
+    return response.data[0].embedding
 
 def generate_summary(text, metadata=None, symptoms=None):
     """Generate appropriate summary based on document type."""
@@ -76,7 +79,6 @@ def generate_summary(text, metadata=None, symptoms=None):
         if symptoms and symptoms.strip():
             context += f"\nReported Symptoms: {symptoms}"
             
-        # Simple system prompt without trying to access metadata
         system_prompt = """You are a doctor having a consultation with your patient. 
         Review this medical document and explain the findings in clear, patient-friendly language. 
         
@@ -105,37 +107,41 @@ def generate_summary(text, metadata=None, symptoms=None):
         logging.error(f"Error generating summary: {e}")
         return "I apologize, but I'm having difficulty interpreting this document at the moment. Please let me review it again."
 
-def handle_follow_up_question(query_text, symptoms=None):
-    """Handle follow-up questions considering both document content and symptoms."""
+def handle_follow_up_question(query_text, symptoms=None, context=None):
+    """Handle follow-up questions considering document content, symptoms, and previous interactions."""
     try:
-        weaviate_response = query_weaviate(query_text)
         client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         
-        # Build context with both document content and symptoms
-        if weaviate_response:
-            context = weaviate_response[0]['document_text']
-        else:
-            context = "Laboratory report shows a 61-year-old male patient's sputum biopsy indicating a tumor with necrosis consistent with known primary melanoma. The diagnosis relates to a lung mass."
+        # Build the full context with previous interactions, symptoms, and the current question
+        full_context = ""
+        
+        if context:
+            full_context += f"Previous Interactions:\n{context}\n\n"
         
         if symptoms and symptoms.strip():
-            context += f"\n\nCurrent Symptoms: {symptoms}"
+            full_context += f"Reported Symptoms: {symptoms}\n\n"
         
-        system_prompt = """You are a doctor discussing medical findings with your patient. 
-        Consider both the document findings and any reported symptoms in your response. 
-        Keep your answers:
-        1. Focused on explaining the connection between symptoms and findings when relevant
-        2. Clear and professional, avoiding technical jargon
-        3. Based on the available information without speculation
-        
-        If symptoms are mentioned, address their potential relationship to the document findings."""
+        full_context += f"Question: {query_text}"
 
+        # Define the system prompt with guidelines
+        system_prompt = """You are a doctor in a follow-up conversation with a patient. The patient has already received an initial summary 
+        of their medical document, and now they have additional questions for you.
+
+        Your goal is to:
+        1. Address their question clearly and compassionately, based on previous information and any symptoms they've reported.
+        2. Relate your answer to the previous findings as much as possible, providing clarity without unnecessary jargon.
+        3. Reassure the patient and make them feel comfortable with the information.
+
+        Please respond in a way that simulates a patient-friendly and empathetic consultation."""
+
+        # Call the OpenAI API to generate the response
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Context: {context}\n\nQuestion: {query_text}"}
+                {"role": "user", "content": full_context}
             ],
-            max_tokens=300,
+            max_tokens=200,
             temperature=0.7
         )
         
@@ -158,14 +164,14 @@ def get_treatment_suggestions(summary, symptoms=None, followup_qas=None):
     try:
         client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         system_prompt = """You are a doctor concluding a consultation by presenting treatment recommendations to your patient. 
-        Based on the assessment, symptoms, and discussion, explain:
+        Based on the findings, symptoms, and previous discussion, please provide:
 
-        1. The recommended treatment approach
-        2. What each treatment aims to achieve
-        3. What the patient can expect
-        4. Important follow-up steps
+        1. An overview of the recommended treatment approach.
+        2. An explanation of what each treatment is expected to accomplish.
+        3. Clear, supportive information on what the patient should expect next.
+        4. Any follow-up actions the patient should take.
 
-        Speak directly to the patient in a clear, professional, and supportive manner."""
+        Use a tone that is professional, empathetic, and supportive to ensure the patient feels reassured and well-informed."""
 
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
