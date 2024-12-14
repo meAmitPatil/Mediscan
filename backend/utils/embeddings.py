@@ -4,6 +4,8 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
 from sentence_transformers import SentenceTransformer
 from openai import OpenAI
+from dotenv import load_dotenv
+load_dotenv()
 
 # Initialize Qdrant client, OpenAI client, and embedding model
 qdrant_client = QdrantClient(host="localhost", port=6333)
