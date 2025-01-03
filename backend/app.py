@@ -77,6 +77,10 @@ def main():
     if uploaded_file and not st.session_state.processing_complete:
         try:
             with st.spinner("🔄 Doctor is reviewing your document..."):
+                
+                if uploaded_file.type in ["image/png", "image/jpeg", "image/jpg", "image/dicom"]:
+                    st.image(uploaded_file, caption="Uploaded Medical Image", use_column_width=True)
+                
                 document_text, metadata = process_uploaded_file(uploaded_file)
 
                 if document_text:
