@@ -26,7 +26,6 @@ config = {
 }
 memory_client = MemoryClient(api_key=MEM0_API_KEY)
 
-# Define the async TTS function
 async def read_treatment_suggestion(suggestion_text):
     async with Speech() as speech:
         synthesis = await speech.synthesize(suggestion_text, 'lily')
@@ -35,7 +34,6 @@ async def read_treatment_suggestion(suggestion_text):
             f.write(synthesis['audio'])
     return audio_file
 
-# Initialize session state for Streamlit
 def initialize_session_state():
     if "processing_complete" not in st.session_state:
         st.session_state.processing_complete = False
@@ -47,7 +45,6 @@ def initialize_session_state():
         st.session_state.treatment_plan = None
 
 def process_uploaded_file(uploaded_file):
-    """Process the uploaded file directly from memory."""
     try:
         bytes_data = uploaded_file.getvalue()
         document_text, metadata = extract_text_from_file(bytes_data, uploaded_file.name)
@@ -58,7 +55,6 @@ def process_uploaded_file(uploaded_file):
 def main():
     initialize_session_state()
 
-    # Sidebar Guide
     st.sidebar.title("Guide")
     st.sidebar.markdown("""
     **How to use MediScan:**
@@ -69,7 +65,6 @@ def main():
     5. **Treatment Suggestions**: Review doctor-like treatment recommendations.
     """)
 
-    # UI setup
     st.markdown("<div class='header'><h1>🏥 MediScan</h1><p>AI-Powered Medical Document Analysis</p></div>", unsafe_allow_html=True)
     uploaded_file = st.file_uploader("Upload your medical document", type=["pdf", "png", "jpg", "jpeg", "docx"])
     symptoms = st.text_area("Enter patient symptoms (optional)", placeholder="Example: fever, headache, fatigue...")
@@ -78,7 +73,7 @@ def main():
         try:
             with st.spinner("🔄 Doctor is reviewing your document..."):
                 
-                if uploaded_file.type in ["image/png", "image/jpeg", "image/jpg", "image/dicom"]:
+                if uploaded_file.type.startswith("image/"):
                     st.image(uploaded_file, caption="Uploaded Medical Image", use_column_width=True)
                 
                 document_text, metadata = process_uploaded_file(uploaded_file)
@@ -103,17 +98,13 @@ def main():
         if st.button("Ask Doctor"):
             if question:
                 with st.spinner("Doctor is considering your question..."):
-                    # Retrieve previous relevant memories
                     previous_interactions = memory_client.search(query=question, user_id="patient_id")
                     
-                    # Construct context from previous interactions
                     context = "\n".join([mem.get("memory", "") for mem in previous_interactions])
 
-                    # Generate an answer with context
                     answer = handle_follow_up_question(question, symptoms, context=context)
                     st.session_state.followup_qas.append({"question": question, "answer": answer})
 
-                    # Save question and answer to Mem0 memory
                     messages = [
                         {"role": "user", "content": question},
                         {"role": "assistant", "content": answer}

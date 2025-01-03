@@ -10,12 +10,12 @@ import logging
 
 load_dotenv()
 
-llama_index = None  # Placeholder for LlamaIndex instance
+llama_index = None
 
-# Initialize Qdrant client
+
 qdrant_client = QdrantClient(host="localhost", port=6333)
 
-# Initialize LlamaIndex with the uploaded document
+
 def initialize_llama_index(documents):
     global llama_index
     embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
@@ -31,12 +31,9 @@ def query_llama_index(query_text):
     return "No index available."
 
 def query_qdrant(query_text):
-    """Query Qdrant for relevant documents."""
     try:
-        # Generate embeddings for the query
         embedding = generate_embeddings(query_text)
         
-        # Perform search in Qdrant collection
         response = qdrant_client.search(
             collection_name="medical_documents",
             query_vector=embedding,
@@ -45,7 +42,6 @@ def query_qdrant(query_text):
             with_vectors=False
         )
 
-        # Check if we got any results
         if response:
             return [{"document_text": hit.payload["text"]} for hit in response]
         return []
@@ -55,16 +51,14 @@ def query_qdrant(query_text):
         return []
 
 def generate_embeddings(text):
-    """Generate embeddings using OpenAI embeddings API."""
     client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     response = client.embeddings.create(
         input=[text],
-        model="text-embedding-ada-002"  # Using the 1536-dimensional model
+        model="text-embedding-ada-002"
     )
     return response.data[0].embedding
 
 def generate_summary(text, metadata=None, symptoms=None):
-    """Generate appropriate summary based on document type."""
     try:
         client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         
@@ -112,7 +106,6 @@ def handle_follow_up_question(query_text, symptoms=None, context=None):
     try:
         client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         
-        # Build the full context with previous interactions, symptoms, and the current question
         full_context = ""
         
         if context:
@@ -123,7 +116,6 @@ def handle_follow_up_question(query_text, symptoms=None, context=None):
         
         full_context += f"Question: {query_text}"
 
-        # Define the system prompt with guidelines
         system_prompt = """You are a doctor in a follow-up conversation with a patient. The patient has already received an initial summary 
         of their medical document, and now they have additional questions for you.
 
@@ -134,7 +126,6 @@ def handle_follow_up_question(query_text, symptoms=None, context=None):
 
         Please respond in a way that simulates a patient-friendly and empathetic consultation."""
 
-        # Call the OpenAI API to generate the response
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
@@ -152,7 +143,6 @@ def handle_follow_up_question(query_text, symptoms=None, context=None):
         return "I apologize, but I'm having trouble processing your question. Please try asking in a different way."
 
 def get_treatment_suggestions(summary, symptoms=None, followup_qas=None):
-    """Generate treatment recommendations as a doctor would present them."""
     context = f"Patient Assessment: {summary}"
     if symptoms:
         context += f"\nReported Symptoms: {symptoms}"
