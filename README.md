@@ -53,7 +53,7 @@ MediScan is an AI-powered application designed to assist users in analyzing medi
     ```
 2. Navigate to the project directory:
     ```bash
-    cd MediScan
+    cd backend
     ```
 3. Install dependencies:
     ```bash
